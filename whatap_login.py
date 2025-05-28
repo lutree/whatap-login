@@ -6,6 +6,8 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 from dotenv import load_dotenv
+import tkinter as tk
+from tkinter import messagebox
 import os
 import time
 import platform
@@ -76,14 +78,35 @@ def add_exit_button(driver):
 def resource_path(relative_path):
     """ PyInstaller에서 임시 폴더와 실제 파일 경로를 모두 처리할 수 있도록 하는 함수 """
     try:
-        base_path = sys._MEIPASS
+        # 실행 파일이 있는 디렉토리 경로 가져오기
+        if getattr(sys, 'frozen', False):
+            base_path = os.path.dirname(sys.executable)
+        else:
+            base_path = os.path.abspath(".")
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+def show_error_and_exit(message):
+    root = tk.Tk()
+    root.withdraw()  # 기본 창 숨기기
+    messagebox.showerror("오류", message)
+    root.destroy()
+    sys.exit(1)
+
 def login_to_whatap():
     # 환경 변수 로드
     env_path = resource_path('.env')
+    if not os.path.exists(env_path):
+        error_message = """'.env' 파일을 찾을 수 없습니다.
+파일 위치: {}
+1. .env 파일을 실행 파일과 같은 폴더에 생성하세요.
+2. 다음 내용을 .env 파일에 추가하세요:
+WHATAP_EMAIL=your_email@example.com
+WHATAP_PASSWORD=your_password""".format(env_path)
+        show_error_and_exit(error_message)
+        return
+        
     load_dotenv(env_path)
     
     # 환경 변수에서 로그인 정보 가져오기
@@ -91,12 +114,12 @@ def login_to_whatap():
     password = os.getenv('WHATAP_PASSWORD')
     
     if not email or not password:
-        print("Error: 환경 변수가 설정되지 않았습니다.")
-        print("1. .env 파일을 생성하세요.")
-        print("2. 다음 내용을 .env 파일에 추가하세요:")
-        print("WHATAP_EMAIL=your_email@example.com")
-        print("WHATAP_PASSWORD=your_password")
-        input("\nEnter 키를 눌러 종료하세요...")
+        error_message = """.env 파일에서 필요한 정보를 찾을 수 없습니다.
+파일 위치: {}
+1. .env 파일에 다음 내용이 있는지 확인하세요:
+WHATAP_EMAIL=your_email@example.com
+WHATAP_PASSWORD=your_password""".format(env_path)
+        show_error_and_exit(error_message)
         return
     
     # Chrome 옵션 설정
@@ -146,11 +169,11 @@ def login_to_whatap():
         try:
             error_message = wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '아이디나 패스워드가 잘못되었습니다')]")))
             if error_message:
-                print("\n로그인 실패: 아이디나 비밀번호가 잘못되었습니다.")
-                print("1. .env 파일의 내용을 확인해주세요.")
-                print(f"2. 현재 입력된 이메일: {email}")
-                print("3. 비밀번호가 올바른지 확인해주세요.")
-                input("\nEnter 키를 눌러 종료하세요...")
+                error_text = """로그인 실패: 아이디나 비밀번호가 잘못되었습니다.
+1. .env 파일의 내용을 확인해주세요.
+2. 현재 입력된 이메일: {}
+3. 비밀번호가 올바른지 확인해주세요.""".format(email)
+                show_error_and_exit(error_text)
                 return
         except:
             # 에러 메시지가 없다면 로그인 성공
@@ -199,17 +222,17 @@ def login_to_whatap():
                         continue
                 
                 if not element_found:
-                    print("\n액티브 트랜잭션 요소를 찾을 수 없습니다.")
-                    print("현재 페이지의 모든 텍스트:")
-                    print(driver.find_element(By.TAG_NAME, "body").text)
-                    input("\nEnter 키를 눌러 종료하세요...")
+                    error_text = """액티브 트랜잭션 요소를 찾을 수 없습니다.
+현재 페이지의 모든 텍스트:
+{}""".format(driver.find_element(By.TAG_NAME, "body").text)
+                    show_error_and_exit(error_text)
                     
             except Exception as e:
-                print(f"\n액티브 트랜잭션 클릭 실패: {str(e)}")
-                print("현재 페이지에서 다음 작업을 진행할 수 없습니다.")
-                print("페이지 소스:")
-                print(driver.page_source)
-                input("\nEnter 키를 눌러 종료하세요...")
+                error_text = """액티브 트랜잭션 클릭 실패: {}
+현재 페이지에서 다음 작업을 진행할 수 없습니다.
+페이지 소스:
+{}""".format(str(e), driver.page_source)
+                show_error_and_exit(error_text)
         
         print("\n화면 상단 중앙의 '종료' 버튼을 클릭하여 프로그램을 종료할 수 있습니다.")
         
@@ -226,17 +249,12 @@ def login_to_whatap():
                 break  # 브라우저가 이미 닫혔거나 오류가 발생한 경우
         
     except Exception as e:
-        print(f"예상치 못한 오류 발생: {str(e)}")
-        
-        # 디버깅을 위한 페이지 소스 출력
-        try:
-            print("\n현재 페이지 정보:")
-            print(f"URL: {driver.current_url}")
-            print("\n페이지 텍스트:")
-            print(driver.find_element(By.TAG_NAME, "body").text)
-        except:
-            pass
-        input("\nEnter 키를 눌러 종료하세요...")
+        error_text = """예상치 못한 오류 발생: {}
+현재 페이지 정보:
+URL: {}
+페이지 텍스트:
+{}""".format(str(e), driver.current_url, driver.find_element(By.TAG_NAME, "body").text)
+        show_error_and_exit(error_text)
     
     finally:
         try:
